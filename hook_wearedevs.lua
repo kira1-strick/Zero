@@ -17,4 +17,4 @@ loadstring = function(code, chunkname)
 end
 
 -- Jalankan script WeAreDevs
-dofile("obfuscated_command an army.lua")
+dofile("Script.lua")
