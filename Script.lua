@@ -1,9 +1,9 @@
 --[[
-  FLOW HUB - COMMAND AN ARMY (FINAL PRODUCTION)
+  FLOW HUB - COMMAND AN ARMY (FINAL ANTI-NIL)
 ============================================================
 ]]
 
--- 1. CLEANUP (ANTI DOUBLE GUI & MEMORY LEAK)
+-- 1. CLEANUP (ANTI DOUBLE GUI)
 local CoreGui = game:GetService("CoreGui")
 local PlayerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
 for _, parent in pairs({CoreGui, PlayerGui}) do
@@ -18,11 +18,11 @@ if _G.FlowHubConnections then
     _G.FlowHubConnections = nil
 end
 
--- 2. SETUP GLOBAL
+-- 2. SETUP GLOBAL (PASTIIN GA NIL)
 if not _G.STHAIN then _G.STHAIN = {} end
 if not _G.STHAIN.Modules then _G.STHAIN.Modules = {} end
 
--- 3. SETUP CONFIG DULU (BIAR GUI GAK ERROR)
+-- 3. SETUP CONFIG
 local Config = {
     ConfigVersion = 2,
     Combat = { AutoAttack = false, AutoRush = false, AutoFollow = false, KillAura = false, TargetLock = false, AutoHeal = false, AntiStun = false, AttackDelay = 0.35, RushDelay = 0.5, FollowDelay = 0.35, KillAuraRange = 20, HealThreshold = 30 },
@@ -35,7 +35,7 @@ local Config = {
 }
 _G.STHAIN.Config = Config
 
--- 4. FETCH GUI PAKE PCALL (ANTI CRASH)
+-- 4. FETCH GUI (DENGAN PROTEKSI _G.STHAIN)
 local BASE_GUI = "https://raw.githubusercontent.com/Kira-128/Flow-GUI/main/src/"
 local GuiModules = {"1_services", "3_theme", "4_utils", "5_gui", "6_components", "7_pages"}
 
@@ -48,10 +48,15 @@ for _, mod in ipairs(GuiModules) do
     task.wait(0.1)
 end
 
--- 5. JEDA BENTAR (BIAR GUI RENDER DULUAN)
+-- 5. PASTIIN _G.STHAIN GA KE-RESET SAMA GUI
+if not _G.STHAIN then _G.STHAIN = {} end
+if not _G.STHAIN.Config then _G.STHAIN.Config = Config end
+if not _G.STHAIN.Modules then _G.STHAIN.Modules = {} end
+
+-- 6. JEDA BENTAR
 task.wait(0.5)
 
--- 6. LOAD CONFIG DARI FILE
+-- 7. LOAD CONFIG DARI FILE
 if readfile and isfile then
     local CONFIG_FOLDER = "FlowHub_Configs"
     local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
@@ -66,9 +71,9 @@ if readfile and isfile then
                     pcall(function() delfile(CONFIG_FILE) end)
                 else
                     for category, values in pairs(decoded) do
-                        if Config[category] then
+                        if _G.STHAIN.Config[category] then
                             for key, val in pairs(values) do
-                                Config[category][key] = val
+                                _G.STHAIN.Config[category][key] = val
                             end
                         end
                     end
@@ -78,7 +83,7 @@ if readfile and isfile then
     end
 end
 
--- 7. LOAD LOGIC (KODE PANJANG LU)
+-- 8. LOAD LOGIC (KODE PANJANG LU)
 local S = _G.STHAIN
 if not S then return end
 local Utils = S.Utils
