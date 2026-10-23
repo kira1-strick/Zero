@@ -1,50 +1,42 @@
 --[[
-  FLOW HUB - COMMAND AN ARMY (FINAL FIX)
+  FLOW HUB - COMMAND AN ARMY (PRODUCTION - FINAL)
 ============================================================
 ]]
 
-local _G = _G
+-- 1. SETUP GLOBAL _G (JANGAN PAKE local _G = _G)
 if not _G.STHAIN then _G.STHAIN = {} end
 if not _G.STHAIN.Modules then _G.STHAIN.Modules = {} end
-
--- 1. BERSIHIN GUI LAMA
-local CoreGui = game:GetService("CoreGui")
-local PlayerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-for _, parent in pairs({CoreGui, PlayerGui}) do
-    local old = parent:FindFirstChild("FlowHub")
-    if old then old:Destroy() end
-end
 
 -- 2. SETUP CONFIG DULU (BIAR GUI GAK ERROR)
 local Config = {
     ConfigVersion = 2,
-    Combat = { AutoAttack = false, AutoRush = false, AutoFollow = false, KillAura = false, TargetLock = false, AutoHeal = false, AntiStun = false, AttackDelay = 0.35, RushDelay = 0.5, FollowDelay = 0.35, KillAuraRange = 20, HealThreshold = 30 },
+    Combat = {
+        AutoAttack = false, AutoRush = false, AutoFollow = false,
+        KillAura = false, TargetLock = false, AutoHeal = false, AntiStun = false,
+        AttackDelay = 0.35, RushDelay = 0.5, FollowDelay = 0.35,
+        KillAuraRange = 20, HealThreshold = 30,
+    },
     Spawn = { UnitSlot = 1, AutoSpawn = false },
-    Visual = { Chams = false, ESPSupply = false, ESPCapture = false, ESPShowDistance = false, ESPHealth = false, ESPName = false, Fullbright = false, NoFog = false },
-    Teleport = { OffsetY = 5, EnemySupplyTarget = "AttackerSupply1", OwnerSupplyTarget = "DefenderSupply1" },
-    Movement = { WalkSpeed = 16, EnableRunSpeed = false, Noclip = false, Fly = false, InfJump = false, FlySpeed = 60, JumpPower = 50 },
+    Visual = {
+        Chams = false, ESPSupply = false, ESPCapture = false,
+        ESPShowDistance = false, ESPHealth = false, ESPName = false,
+        Fullbright = false, NoFog = false,
+    },
+    Teleport = {
+        OffsetY = 5,
+        EnemySupplyTarget = "AttackerSupply1",
+        OwnerSupplyTarget = "DefenderSupply1",
+    },
+    Movement = {
+        WalkSpeed = 16, EnableRunSpeed = false, Noclip = false,
+        Fly = false, InfJump = false, FlySpeed = 60, JumpPower = 50,
+    },
     Misc = { AutoJoinTeam = "none", AntiAFK = true },
     Config = { AutoSave = true },
 }
 _G.STHAIN.Config = Config
 
--- 3. FETCH GUI PAKE PCALL (ANTI CRASH)
-local BASE_GUI = "https://raw.githubusercontent.com/Kira-128/Flow-GUI/main/src/"
-local GuiModules = {"1_services", "3_theme", "4_utils", "5_gui", "6_components", "7_pages"}
-
-for _, mod in ipairs(GuiModules) do
-    local ok, src = pcall(game.HttpGet, game, BASE_GUI .. mod .. ".lua")
-    if ok and src and #src > 0 then
-        local fn = loadstring(src, "@" .. mod .. ".lua")
-        if fn then pcall(fn) end
-    end
-    task.wait(0.1)
-end
-
--- 4. JEDA BENTAR (BIAR GUI RENDER DULUAN)
-task.wait(0.5)
-
--- 5. LOAD CONFIG DARI FILE
+-- 3. LOAD CONFIG DARI FILE JSON
 if readfile and isfile then
     local CONFIG_FOLDER = "FlowHub_Configs"
     local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
@@ -71,10 +63,27 @@ if readfile and isfile then
     end
 end
 
--- 6. LOAD LOGIC (KODE GABUNGAN LU)
--- PASTIIN KODE DI BAWAH INI GAK ADA YANG KEPOTONG
+-- 4. FETCH GUI DARI REPO PUBLIC (FLOW-GUI)
+local BASE_GUI = "https://raw.githubusercontent.com/Kira-128/Flow-GUI/main/src/"
+-- Pastiin file 2_config.lua ada di repo Flow-GUI lu
+local GuiModules = {"1_services", "2_config", "3_theme", "4_utils", "5_gui", "6_components", "7_pages"}
+
+for _, mod in ipairs(GuiModules) do
+    local ok, src = pcall(game.HttpGet, game, BASE_GUI .. mod .. ".lua")
+    if ok and src and #src > 0 then
+        local fn = loadstring(src, "@" .. mod .. ".lua")
+        if fn then pcall(fn) end
+    end
+    task.wait(0.1)
+end
+
+-- 5. JEDA BIAR GUI RENDER DULUAN
+task.wait(0.5)
+
+-- 6. LOAD LOGIC (KODE PANJANG LU)
 local S = _G.STHAIN
 if not S then return end
+local Config = S.Config
 local Utils = S.Utils
 local Run = S.Services.Run
 local Lighting = S.Services.Lighting
@@ -91,9 +100,16 @@ local TroopStateRequest = Remotes and Remotes:FindFirstChild("TroopStateRequest"
 local RushRequest = Remotes and Remotes:FindFirstChild("RushRequest")
 local RespawnUnitRequest = Remotes and Remotes:FindFirstChild("RespawnUnitRequest")
 
-local State = { Fly = false, Noclip = false, Invisible = false, Fullbright = false, NoFog = false, ESP = false, TargetLock = false }
+local State = {
+    Fly = false, Noclip = false, Invisible = false,
+    Fullbright = false, NoFog = false,
+    ESP = false, TargetLock = false,
+}
 _G.FlowHubConnections = _G.FlowHubConnections or {}
-local function addConn(conn) table.insert(_G.FlowHubConnections, conn) return conn end
+local function addConn(conn)
+    table.insert(_G.FlowHubConnections, conn)
+    return conn
+end
 local function getChar() return LP.Character end
 local function getHRP() local c = LP.Character return c and c:FindFirstChild("HumanoidRootPart") end
 local function getHum() local c = LP.Character return c and c:FindFirstChildOfClass("Humanoid") end
@@ -103,24 +119,36 @@ local function sendKey(keyCode, hold)
     local delay = hold or 0.05
     if keypress and keyrelease then
         local keyStr = keyCode.Name:lower()
-        local ok = pcall(function() keypress(keyStr) task.wait(delay) keyrelease(keyStr) end)
+        local ok = pcall(function()
+            keypress(keyStr)
+            task.wait(delay)
+            keyrelease(keyStr)
+        end)
         if ok then return true end
     end
     if VIM then
-        local ok = pcall(function() VIM:SendKeyEvent(true, keyCode, false, game) task.wait(delay) VIM:SendKeyEvent(false, keyCode, false, game) end)
+        local ok = pcall(function()
+            VIM:SendKeyEvent(true, keyCode, false, game)
+            task.wait(delay)
+            VIM:SendKeyEvent(false, keyCode, false, game)
+        end)
         if ok then return true end
     end
     return false
 end
 
-task.spawn(function() repeat task.wait(0.1) until LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") end)
+task.spawn(function()
+    repeat task.wait(0.1) until LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+end)
 
 addConn(Run.RenderStepped:Connect(function()
     local hum = getHum()
     if not hum then return end
     local mv = Config.Movement
     if mv.EnableRunSpeed then
-        if mv.WalkSpeed and mv.WalkSpeed > 0 and hum.WalkSpeed ~= mv.WalkSpeed then hum.WalkSpeed = mv.WalkSpeed end
+        if mv.WalkSpeed and mv.WalkSpeed > 0 and hum.WalkSpeed ~= mv.WalkSpeed then 
+            hum.WalkSpeed = mv.WalkSpeed 
+        end
     else
         if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
     end
@@ -132,12 +160,17 @@ end))
 
 local noclipOriginal = {}
 local function cleanupNoclip()
-    for part, orig in pairs(noclipOriginal) do if part and part.Parent then pcall(function() part.CanCollide = orig end) end end
+    for part, orig in pairs(noclipOriginal) do
+        if part and part.Parent then pcall(function() part.CanCollide = orig end) end
+    end
     noclipOriginal = {}
 end
 
 addConn(Run.Heartbeat:Connect(function()
-    if not Config.Movement.Noclip then if State.Noclip then cleanupNoclip() State.Noclip = false end return end
+    if not Config.Movement.Noclip then
+        if State.Noclip then cleanupNoclip() State.Noclip = false end
+        return
+    end
     local char = getChar()
     if not char then return end
     for _, part in pairs(char:GetDescendants()) do
@@ -155,7 +188,11 @@ local function stopFly()
     if flyBV then flyBV:Destroy() flyBV = nil end
     if flyBG then flyBG:Destroy() flyBG = nil end
     local hrp = getHRP()
-    if hrp then hrp.Velocity = Vector3.zero hrp.RotVelocity = Vector3.zero hrp.CanCollide = true end
+    if hrp then
+        hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
+        hrp.CanCollide = true
+    end
     local hum = getHum()
     if hum then pcall(function() hum.PlatformStand = false end) end
 end
@@ -188,8 +225,11 @@ end
 
 task.spawn(function()
     while task.wait(0.5) do
-        if Config.Movement.Fly and not State.Fly then startFly() State.Fly = true
-        elseif not Config.Movement.Fly and State.Fly then stopFly() State.Fly = false end
+        if Config.Movement.Fly and not State.Fly then
+            startFly(); State.Fly = true
+        elseif not Config.Movement.Fly and State.Fly then
+            stopFly(); State.Fly = false
+        end
     end
 end)
 
@@ -199,7 +239,9 @@ task.spawn(function()
             local hum = getHum()
             if hum then
                 local st = hum:GetState()
-                if st == Enum.HumanoidStateType.Freefall or st == Enum.HumanoidStateType.Jumping then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end) end
+                if st == Enum.HumanoidStateType.Freefall or st == Enum.HumanoidStateType.Jumping then
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
+                end
             end
         end
     end
@@ -209,7 +251,12 @@ task.spawn(function()
     while task.wait(0.5) do
         if Config.Combat.AntiStun then
             local hum = getHum()
-            if hum then pcall(function() hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false) hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false) end) end
+            if hum then
+                pcall(function()
+                    hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+                    hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+                end)
+            end
         end
     end
 end)
@@ -249,7 +296,10 @@ task.spawn(function()
                     local thrp = model:FindFirstChild("HumanoidRootPart")
                     if not thrp then continue end
                     local dist = (thrp.Position - hrp.Position).Magnitude
-                    if dist > 5 and dist < nearestDist then nearest = thrp nearestDist = dist end
+                    if dist > 5 and dist < nearestDist then
+                        nearest = thrp
+                        nearestDist = dist
+                    end
                 end
                 if nearest and tick() - killAuraCD >= 0.5 then
                     killAuraCD = tick()
@@ -277,9 +327,20 @@ task.spawn(function()
 end)
 
 local aimLock, aimLostAt, aimSmoothCF = nil, 0, nil
-local function aimAlive(p) if not p.Character then return false end local hum = p.Character:FindFirstChildOfClass("Humanoid") if not hum or hum.Health <= 0 then return false end return p.Character:FindFirstChild("Head") ~= nil end
-local function aimValid(p) if not p or not aimAlive(p) then return false end if p.Team == LP.Team and p.Team ~= nil then return false end local part = p.Character:FindFirstChild("Head") if not part then return false end if (part.Position - Cam.CFrame.Position).Magnitude > 500 then return false end return true end
-
+local function aimAlive(p)
+    if not p.Character then return false end
+    local hum = p.Character:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return false end
+    return p.Character:FindFirstChild("Head") ~= nil
+end
+local function aimValid(p)
+    if not p or not aimAlive(p) then return false end
+    if p.Team == LP.Team and p.Team ~= nil then return false end
+    local part = p.Character:FindFirstChild("Head")
+    if not part then return false end
+    if (part.Position - Cam.CFrame.Position).Magnitude > 500 then return false end
+    return true
+end
 local function aimClosest()
     local best, bd = nil, math.huge
     local ctr = Vector2.new(Cam.ViewportSize.X/2, Cam.ViewportSize.Y/2)
@@ -300,18 +361,32 @@ local function aimClosest()
     end
     return best
 end
-
-local function aimPredict(part) local v = part.AssemblyLinearVelocity or Vector3.new() return part.Position + (v * 0.18) end
+local function aimPredict(part)
+    local v = part.AssemblyLinearVelocity or Vector3.new()
+    return part.Position + (v * 0.18)
+end
 
 addConn(Run.RenderStepped:Connect(function(dt)
     if not Config.Combat.TargetLock then
-        if State.TargetLock then aimLock = nil aimSmoothCF = nil State.TargetLock = false end
+        if State.TargetLock then
+            aimLock = nil
+            aimSmoothCF = nil
+            State.TargetLock = false
+        end
         return
     end
     if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
     if not aimSmoothCF then aimSmoothCF = Cam.CFrame end
-    if aimLock then if not aimValid(aimLock) then aimLock = nil aimLostAt = tick() end end
-    if not aimLock and (tick() - aimLostAt) >= 0.5 then local t = aimClosest() if t then aimLock = t end end
+    if aimLock then
+        if not aimValid(aimLock) then
+            aimLock = nil
+            aimLostAt = tick()
+        end
+    end
+    if not aimLock and (tick() - aimLostAt) >= 0.5 then
+        local t = aimClosest()
+        if t then aimLock = t end
+    end
     if not aimLock then return end
     local part = aimLock.Character and aimLock.Character:FindFirstChild("Head")
     if not part then return end
@@ -327,7 +402,6 @@ local espCache = {}
 local espGuiParent = (gethui and gethui()) or game:GetService("CoreGui")
 local COLOR_ENEMY = Color3.fromRGB(255, 60, 60)
 local COLOR_TEAM = Color3.fromRGB(74, 158, 255)
-
 local function isTeammate(model)
     local plr = game.Players:GetPlayerFromCharacter(model)
     if not plr then return false end
@@ -336,17 +410,21 @@ local function isTeammate(model)
     if myTeam and theirTeam then return myTeam == theirTeam end
     return false
 end
-
 local function cleanupESP()
     for _, objs in pairs(espCache) do
-        for _, obj in pairs(objs) do if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end end
+        for _, obj in pairs(objs) do
+            if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end
+        end
     end
     espCache = {}
 end
 
 task.spawn(function()
     while task.wait(0.5) do
-        if not Config.Visual.Chams then if next(espCache) then cleanupESP() end continue end
+        if not Config.Visual.Chams then
+            if next(espCache) then cleanupESP() end
+            continue
+        end
         local myChar, myHRP = getChar(), getHRP()
         local anySetting = Config.Visual.ESPShowDistance or Config.Visual.ESPHealth or Config.Visual.ESPName
         for _, model in pairs(workspace:GetChildren()) do
@@ -390,14 +468,18 @@ task.spawn(function()
                 local parts = {}
                 if Config.Visual.ESPName then table.insert(parts, model.Name) end
                 if Config.Visual.ESPHealth then table.insert(parts, "[ "..math.floor(hum.Health).." HP ]") end
-                if Config.Visual.ESPShowDistance then table.insert(parts, "[ "..math.floor((hrp.Position - myHRP.Position).Magnitude).." M ]") end
+                if Config.Visual.ESPShowDistance then
+                    table.insert(parts, "[ "..math.floor((hrp.Position - myHRP.Position).Magnitude).." M ]")
+                end
                 espCache[model].infoLbl.Text = table.concat(parts, " ")
                 espCache[model].infoLbl.TextColor3 = markerColor
             end
         end
         for model, objs in pairs(espCache) do
             if not model.Parent then
-                for _, obj in pairs(objs) do if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end end
+                for _, obj in pairs(objs) do
+                    if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end
+                end
                 espCache[model] = nil
             end
         end
@@ -406,14 +488,26 @@ end)
 
 task.spawn(function()
     while task.wait(0.5) do
-        if Config.Visual.Fullbright then Lighting.Brightness = 3 Lighting.Ambient = Color3.fromRGB(200, 200, 200) Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200) end
-        if Config.Visual.NoFog then Lighting.FogEnd = 100000 Lighting.FogStart = 100000 end
+        if Config.Visual.Fullbright then
+            Lighting.Brightness = 3
+            Lighting.Ambient = Color3.fromRGB(200, 200, 200)
+            Lighting.OutdoorAmbient = Color3.fromRGB(200, 200, 200)
+        end
+        if Config.Visual.NoFog then
+            Lighting.FogEnd = 100000
+            Lighting.FogStart = 100000
+        end
     end
 end)
 
 task.spawn(function()
     while task.wait(120) do
-        if Config.Misc.AntiAFK then pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end) end
+        if Config.Misc.AntiAFK then
+            pcall(function()
+                VU:CaptureController()
+                VU:ClickButton2(Vector2.new())
+            end)
+        end
     end
 end)
 
@@ -422,16 +516,31 @@ function _G.STHAIN.SpawnUnit(slot)
     if not PG then return false end
     local spawnBtn = nil
     for _, v in pairs(PG:GetDescendants()) do
-        if (v:IsA("ImageButton") or v:IsA("TextButton")) and v.Name == "Spawn" and v.Visible then spawnBtn = v break end
+        if (v:IsA("ImageButton") or v:IsA("TextButton")) and v.Name == "Spawn" and v.Visible then
+            spawnBtn = v
+            break
+        end
     end
-    if spawnBtn then pcall(function() if firesignal then firesignal(spawnBtn.MouseButton1Click) else spawnBtn:Activate() end end) return true end
-    if RespawnUnitRequest then pcall(function() RespawnUnitRequest:FireServer(tonumber(slot) or 1) end) return true end
+    if spawnBtn then
+        pcall(function()
+            if firesignal then firesignal(spawnBtn.MouseButton1Click) else spawnBtn:Activate() end
+        end)
+        return true
+    end
+    if RespawnUnitRequest then
+        pcall(function() RespawnUnitRequest:FireServer(tonumber(slot) or 1) end)
+        return true
+    end
     return false
 end
 
 task.spawn(function()
     while task.wait(3) do
-        if Config.Spawn.AutoSpawn then if _G.STHAIN.SpawnUnit then _G.STHAIN.SpawnUnit(Config.Spawn.UnitSlot or 1) end end
+        if Config.Spawn.AutoSpawn then
+            if _G.STHAIN.SpawnUnit then
+                _G.STHAIN.SpawnUnit(Config.Spawn.UnitSlot or 1)
+            end
+        end
     end
 end)
 
@@ -441,13 +550,17 @@ task.spawn(function()
         local team = Config.Misc.AutoJoinTeam
         if team and team ~= "none" then
             local targetName = (team == "defender") and "Defenders" or "Attackers"
-            if LP.Team and LP.Team.Name == targetName then Config.Misc.AutoJoinTeam = "none" else
+            if LP.Team and LP.Team.Name == targetName then
+                Config.Misc.AutoJoinTeam = "none"
+            else
                 local TeamRequest = Remotes and Remotes:FindFirstChild("TeamRequest")
                 if TeamRequest then pcall(function() TeamRequest:FireServer(targetName) end) end
                 teamAttempts = teamAttempts + 1
                 if teamAttempts > 10 then Config.Misc.AutoJoinTeam = "none" end
             end
-        else teamAttempts = 0 end
+        else
+            teamAttempts = 0
+        end
     end
 end)
 
@@ -455,24 +568,50 @@ function _G.STHAIN.ClaimQuests()
     local PG = LP:FindFirstChild("PlayerGui")
     if not PG then return 0 end
     local hud = PG:FindFirstChild("HUD")
-    if hud then local rightBar = hud:FindFirstChild("RightBar") if rightBar then local questBtn = rightBar:FindFirstChild("Quest") if questBtn then pcall(function() if firesignal then firesignal(questBtn.MouseButton1Click) else questBtn:Activate() end end) task.wait(1) end end end
+    if hud then
+        local rightBar = hud:FindFirstChild("RightBar")
+        if rightBar then
+            local questBtn = rightBar:FindFirstChild("Quest")
+            if questBtn then
+                pcall(function()
+                    if firesignal then firesignal(questBtn.MouseButton1Click) else questBtn:Activate() end
+                end)
+                task.wait(1)
+            end
+        end
+    end
     local interactable = PG:FindFirstChild("Interactable")
     local questUI = interactable and interactable:FindFirstChild("QuestUI")
     if not questUI then return 0 end
     local claimed = 0
     local function processTab(tabName)
         local tabBtn = questUI:FindFirstChild(tabName)
-        if tabBtn then pcall(function() if firesignal then firesignal(tabBtn.MouseButton1Click) else tabBtn:Activate() end end) task.wait(1) end
+        if tabBtn then
+            pcall(function()
+                if firesignal then firesignal(tabBtn.MouseButton1Click) else tabBtn:Activate() end
+            end)
+            task.wait(1)
+        end
         for _, c in pairs(questUI:GetDescendants()) do
             if (c:IsA("ImageButton") or c:IsA("TextButton")) and c.Name == "Claim" then
-                if c.Visible then local ok = pcall(function() if firesignal then firesignal(c.MouseButton1Click) else c:Activate() end end) if ok then claimed = claimed + 1 task.wait(0.3) end end
+                if c.Visible then
+                    local ok = pcall(function()
+                        if firesignal then firesignal(c.MouseButton1Click) else c:Activate() end
+                    end)
+                    if ok then claimed = claimed + 1 task.wait(0.3) end
+                end
             end
         end
     end
-    processTab("DailyQuests") processTab("WeeklyQuests")
+    processTab("DailyQuests")
+    processTab("WeeklyQuests")
     task.wait(0.3)
     local exitBtn = questUI:FindFirstChild("Exit")
-    if exitBtn then pcall(function() if firesignal then firesignal(exitBtn.MouseButton1Click) else exitBtn:Activate() end end) end
+    if exitBtn then
+        pcall(function()
+            if firesignal then firesignal(exitBtn.MouseButton1Click) else exitBtn:Activate() end
+        end)
+    end
     return claimed
 end
 
@@ -488,7 +627,10 @@ local function ambilCode()
     local seen = {}
     for li in section:gmatch("<li[^>]*>(.-)</li>") do
         local code = li:match("<strong>([A-Z][A-Z0-9]+)</strong>") or li:match("^%s*([A-Z][A-Z0-9]+)")
-        if code and #code >= 3 and #code <= 20 and not seen[code] then seen[code] = true table.insert(codes, code) end
+        if code and #code >= 3 and #code <= 20 and not seen[code] then
+            seen[code] = true
+            table.insert(codes, code)
+        end
     end
     return codes
 end
@@ -497,7 +639,21 @@ function _G.STHAIN.RedeemAllCodes()
     local codes = ambilCode()
     if #codes == 0 then return 0 end
     local PG = LP:FindFirstChild("PlayerGui")
-    if PG then local hud = PG:FindFirstChild("HUD") if hud then local rightBar = hud:FindFirstChild("RightBar") if rightBar then local codeBtn = rightBar:FindFirstChild("Code") if codeBtn and codeBtn.Visible then pcall(function() if firesignal then firesignal(codeBtn.MouseButton1Click) else codeBtn:Activate() end end) task.wait(1) end end end end
+    if PG then
+        local hud = PG:FindFirstChild("HUD")
+        if hud then
+            local rightBar = hud:FindFirstChild("RightBar")
+            if rightBar then
+                local codeBtn = rightBar:FindFirstChild("Code")
+                if codeBtn and codeBtn.Visible then
+                    pcall(function()
+                        if firesignal then firesignal(codeBtn.MouseButton1Click) else codeBtn:Activate() end
+                    end)
+                    task.wait(1)
+                end
+            end
+        end
+    end
     local interactable = PG and PG:FindFirstChild("Interactable")
     local codeUI = interactable and interactable:FindFirstChild("CodeUI")
     local tb = codeUI and codeUI:FindFirstChild("TextBox")
@@ -508,21 +664,39 @@ function _G.STHAIN.RedeemAllCodes()
     pcall(function() tb.TextEditable = false end)
     local sukses = 0
     for i, code in ipairs(codes) do
-        pcall(function() tb.Text = code end) task.wait(0.3)
+        pcall(function() tb.Text = code end)
+        task.wait(0.3)
         local fired = false
-        if btn then fired = pcall(function() if firesignal then firesignal(btn.MouseButton1Click) else btn:Activate() end end) end
+        if btn then
+            fired = pcall(function()
+                if firesignal then firesignal(btn.MouseButton1Click) else btn:Activate() end
+            end)
+        end
         if fired then sukses = sukses + 1 end
         task.wait(1)
     end
-    pcall(function() tb.TextEditable = savedEditable end) focusBlock:Disconnect() task.wait(0.3)
-    if codeUI then local exitBtn = codeUI:FindFirstChild("Exit") if exitBtn then pcall(function() if firesignal then firesignal(exitBtn.MouseButton1Click) else exitBtn:Activate() end end) end end
+    pcall(function() tb.TextEditable = savedEditable end)
+    focusBlock:Disconnect()
+    task.wait(0.3)
+    if codeUI then
+        local exitBtn = codeUI:FindFirstChild("Exit")
+        if exitBtn then
+            pcall(function()
+                if firesignal then firesignal(exitBtn.MouseButton1Click) else exitBtn:Activate() end
+            end)
+        end
+    end
     return sukses
 end
 
 local function getMapFolder()
     local activeMap = workspace:FindFirstChild("ActiveMap")
     if not activeMap then return nil end
-    for _, child in pairs(activeMap:GetChildren()) do if (child:IsA("Folder") or child:IsA("Model")) and child:FindFirstChild("Interactable") then return child end end
+    for _, child in pairs(activeMap:GetChildren()) do
+        if (child:IsA("Folder") or child:IsA("Model")) and child:FindFirstChild("Interactable") then
+            return child
+        end
+    end
     return nil
 end
 
@@ -538,20 +712,38 @@ function _G.STHAIN.TeleportScan()
             if obj:IsA("Model") then
                 local n = string.lower(obj.Name)
                 local teamType = "unknown"
-                if n:find("attacker") then teamType = "attacker" elseif n:find("defender") then teamType = "defender" end
+                if n:find("attacker") then teamType = "attacker"
+                elseif n:find("defender") then teamType = "defender" end
                 table.insert(results.supplies, {name = obj.Name, instance = obj, capturePart = obj:FindFirstChild("CapturePoint"), team = teamType})
             end
         end
     end
     local pointsFolder = interactable:FindFirstChild("Points")
-    if pointsFolder then for _, obj in pairs(pointsFolder:GetChildren()) do if obj:IsA("Model") then local cp = obj:FindFirstChild("CapturePoint") if cp then table.insert(results.captures, {name = obj.Name, instance = cp, model = obj}) end end end end
+    if pointsFolder then
+        for _, obj in pairs(pointsFolder:GetChildren()) do
+            if obj:IsA("Model") then
+                local cp = obj:FindFirstChild("CapturePoint")
+                if cp then
+                    table.insert(results.captures, {name = obj.Name, instance = cp, model = obj})
+                end
+            end
+        end
+    end
     return results
 end
 
 function _G.STHAIN.GetMyTeam()
     local sel = LP:GetAttribute("SelectedTeam")
-    if sel then local n = string.lower(tostring(sel)) if n:find("attacker") then return "attacker" end if n:find("defender") then return "defender" end end
-    if LP.Team then local n = string.lower(LP.Team.Name) if n:find("attacker") then return "attacker" end if n:find("defender") then return "defender" end end
+    if sel then
+        local n = string.lower(tostring(sel))
+        if n:find("attacker") then return "attacker" end
+        if n:find("defender") then return "defender" end
+    end
+    if LP.Team then
+        local n = string.lower(LP.Team.Name)
+        if n:find("attacker") then return "attacker" end
+        if n:find("defender") then return "defender" end
+    end
     return "unknown"
 end
 
@@ -562,14 +754,27 @@ local function godmodeOn()
     if not hum then return nil end
     local original = { MaxHealth = hum.MaxHealth, Health = hum.Health }
     local GOD_HP = 1000000
-    pcall(function() hum.MaxHealth = GOD_HP hum.Health = GOD_HP end)
+    pcall(function()
+        hum.MaxHealth = GOD_HP
+        hum.Health = GOD_HP
+    end)
     local lockConn = Run.Stepped:Connect(function()
-        if hum and hum.Parent then pcall(function() if hum.MaxHealth < GOD_HP then hum.MaxHealth = GOD_HP end if hum.Health < GOD_HP then hum.Health = GOD_HP end end) end
+        if hum and hum.Parent then
+            pcall(function()
+                if hum.MaxHealth < GOD_HP then hum.MaxHealth = GOD_HP end
+                if hum.Health < GOD_HP then hum.Health = GOD_HP end
+            end)
+        end
     end)
     return {
         restore = function()
             if lockConn then lockConn:Disconnect() end
-            if hum and hum.Parent then pcall(function() hum.MaxHealth = original.MaxHealth hum.Health = original.MaxHealth end) end
+            if hum and hum.Parent then
+                pcall(function()
+                    hum.MaxHealth = original.MaxHealth
+                    hum.Health = original.MaxHealth
+                end)
+            end
         end
     }
 end
@@ -579,17 +784,39 @@ function _G.STHAIN.TeleportTo(part)
     if not char then return false end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     if not (hrp and part) then return false end
-    local targetPos = typeof(part) == "Vector3" and part or part.Position
+    local targetPos
+    if typeof(part) == "Vector3" then targetPos = part
+    else
+        if not part.Parent then return false end
+        targetPos = part.Position
+    end
     local offY = (Config.Teleport and Config.Teleport.OffsetY) or 5
     local god = godmodeOn()
     local savedCollide = {}
-    for _, p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then savedCollide[p] = p.CanCollide p.CanCollide = false end end
-    pcall(function() hrp.Velocity = Vector3.zero hrp.RotVelocity = Vector3.zero end)
-    pcall(function() hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, offY, 0)) end)
+    for _, p in pairs(char:GetDescendants()) do
+        if p:IsA("BasePart") then
+            savedCollide[p] = p.CanCollide
+            p.CanCollide = false
+        end
+    end
+    pcall(function()
+        hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
+    end)
+    pcall(function()
+        hrp.CFrame = CFrame.new(targetPos + Vector3.new(0, offY, 0))
+    end)
     task.wait(1.5)
-    pcall(function() hrp.Velocity = Vector3.zero hrp.RotVelocity = Vector3.zero end)
+    pcall(function()
+        hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
+    end)
     task.wait(1)
-    for p, cc in pairs(savedCollide) do if p and p.Parent then pcall(function() p.CanCollide = cc end) end end
+    for p, cc in pairs(savedCollide) do
+        if p and p.Parent then
+            pcall(function() p.CanCollide = cc end)
+        end
+    end
     if god then god.restore() end
     return true
 end
@@ -603,10 +830,18 @@ function _G.STHAIN.GetSupplyList()
     local ownerSupplies = {}
     local enemySupplies = {}
     for _, sup in ipairs(results.supplies) do
-        if sup.team == myTeam then table.insert(ownerSupplies, sup.name)
-        elseif sup.team == enemyTeam then table.insert(enemySupplies, sup.name) end
+        if sup.team == myTeam then
+            table.insert(ownerSupplies, sup.name)
+        elseif sup.team == enemyTeam then
+            table.insert(enemySupplies, sup.name)
+        end
     end
-    return { myTeam = myTeam, enemyTeam = enemyTeam, ownerSupplies = ownerSupplies, enemySupplies = enemySupplies }
+    return {
+        myTeam = myTeam,
+        enemyTeam = enemyTeam,
+        ownerSupplies = ownerSupplies,
+        enemySupplies = enemySupplies,
+    }
 end
 
 function _G.STHAIN.TeleportToSupplyEnemy(target)
@@ -617,9 +852,20 @@ function _G.STHAIN.TeleportToSupplyEnemy(target)
     if myTeam == "unknown" then return false end
     local enemyTeam = (myTeam == "attacker") and "defender" or "attacker"
     local candidates = {}
-    for _, sup in ipairs(results.supplies) do if sup.team == enemyTeam then table.insert(candidates, sup) end end
+    for _, sup in ipairs(results.supplies) do
+        if sup.team == enemyTeam then
+            table.insert(candidates, sup)
+        end
+    end
     if #candidates == 0 then return false end
-    if target ~= "" then for _, sup in ipairs(candidates) do if sup.name == target then _G.STHAIN.TeleportTo(sup.capturePart or sup.instance) return true end end end
+    if target ~= "" then
+        for _, sup in ipairs(candidates) do
+            if sup.name == target then
+                _G.STHAIN.TeleportTo(sup.capturePart or sup.instance)
+                return true
+            end
+        end
+    end
     local targetSup = candidates[1]
     _G.STHAIN.TeleportTo(targetSup.capturePart or targetSup.instance)
     return true
@@ -632,9 +878,20 @@ function _G.STHAIN.TeleportToSupplyOwner(target)
     local myTeam = _G.STHAIN.GetMyTeam()
     if myTeam == "unknown" then return false end
     local candidates = {}
-    for _, sup in ipairs(results.supplies) do if sup.team == myTeam then table.insert(candidates, sup) end end
+    for _, sup in ipairs(results.supplies) do
+        if sup.team == myTeam then
+            table.insert(candidates, sup)
+        end
+    end
     if #candidates == 0 then return false end
-    if target ~= "" then for _, sup in ipairs(candidates) do if sup.name == target then _G.STHAIN.TeleportTo(sup.capturePart or sup.instance) return true end end end
+    if target ~= "" then
+        for _, sup in ipairs(candidates) do
+            if sup.name == target then
+                _G.STHAIN.TeleportTo(sup.capturePart or sup.instance)
+                return true
+            end
+        end
+    end
     local targetSup = candidates[1]
     _G.STHAIN.TeleportTo(targetSup.capturePart or targetSup.instance)
     return true
@@ -657,7 +914,12 @@ end
 
 local function tpToNamed(name)
     local results = _G.STHAIN.TeleportScan()
-    for _, cap in ipairs(results.captures) do if string.lower(cap.name) == string.lower(name) then _G.STHAIN.TeleportTo(cap.instance) return true end end
+    for _, cap in ipairs(results.captures) do
+        if string.lower(cap.name) == string.lower(name) then
+            _G.STHAIN.TeleportTo(cap.instance)
+            return true
+        end
+    end
     return false
 end
 
@@ -681,7 +943,10 @@ function _G.STHAIN.TeleportToNearestEnemy()
             local hum = model:FindFirstChildOfClass("Humanoid")
             if hum and hum.Health > 0 then
                 local thrp = model:FindFirstChild("HumanoidRootPart")
-                if thrp then local d = (thrp.Position - hrp.Position).Magnitude if d > 5 and d < nd then nearest = thrp nd = d end end
+                if thrp then
+                    local d = (thrp.Position - hrp.Position).Magnitude
+                    if d > 5 and d < nd then nearest = thrp nd = d end
+                end
             end
         end
     end
@@ -699,11 +964,17 @@ function _G.STHAIN.TeleportToTeammate()
     for _, player in pairs(game.Players:GetPlayers()) do
         if player ~= LP and player.Character then
             local pTeam = ""
-            if player:GetAttribute("SelectedTeam") then pTeam = string.lower(tostring(player:GetAttribute("SelectedTeam")))
-            elseif player.Team then pTeam = string.lower(player.Team.Name) end
+            if player:GetAttribute("SelectedTeam") then
+                pTeam = string.lower(tostring(player:GetAttribute("SelectedTeam")))
+            elseif player.Team then
+                pTeam = string.lower(player.Team.Name)
+            end
             if pTeam:find(myTeam) then
                 local thrp = player.Character:FindFirstChild("HumanoidRootPart")
-                if thrp then local d = (thrp.Position - hrp.Position).Magnitude if d < nd then nearest = thrp nd = d end end
+                if thrp then
+                    local d = (thrp.Position - hrp.Position).Magnitude
+                    if d < nd then nearest = thrp nd = d end
+                end
             end
         end
     end
@@ -713,23 +984,35 @@ end
 
 local isDirty = false
 local saveThread = nil
-
 function _G.STHAIN.MarkDirty()
     if not _G.STHAIN.Config.Config.AutoSave then return end 
     isDirty = true
     if saveThread then task.cancel(saveThread) end
     saveThread = task.delay(2, function()
         if isDirty then
-            if _G.STHAIN.Config.Config.AutoSave then if Utils and Utils.SaveConfig then Utils.SaveConfig() end end
+            if _G.STHAIN.Config.Config.AutoSave then
+                if Utils and Utils.SaveConfig then Utils.SaveConfig() end
+            end
             isDirty = false
             saveThread = nil
         end
     end)
 end
 
-function _G.STHAIN.SaveConfig() if Utils and Utils.SaveConfig then return Utils.SaveConfig() end return false end
-function _G.STHAIN.LoadConfig() if Utils and Utils.LoadConfig then return Utils.LoadConfig() end return false end
-function _G.STHAIN.DeleteConfig() if Utils and Utils.DeleteConfig then return Utils.DeleteConfig() end return false end
+function _G.STHAIN.SaveConfig()
+    if Utils and Utils.SaveConfig then return Utils.SaveConfig() end
+    return false
+end
+
+function _G.STHAIN.LoadConfig()
+    if Utils and Utils.LoadConfig then return Utils.LoadConfig() end
+    return false
+end
+
+function _G.STHAIN.DeleteConfig()
+    if Utils and Utils.DeleteConfig then return Utils.DeleteConfig() end
+    return false
+end
 
 LP.CharacterAdded:Connect(function(char)
     task.wait(1.5)
@@ -745,5 +1028,7 @@ end)
 
 task.spawn(function()
     task.wait(0.5)
-    if S.Utils and S.Utils.LoadConfig then S.Utils.LoadConfig() end
+    if S.Utils and S.Utils.LoadConfig then
+        S.Utils.LoadConfig()
+    end
 end)
