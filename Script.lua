@@ -1,8 +1,14 @@
--- [0] SETUP GLOBAL
+--[[
+  FLOW HUB - COMMAND AN ARMY (FINAL MERGED)
+============================================================
+]]
+
+-- ============================================================
+-- BAGIAN 1: SETUP DASAR & CONFIG (JANGAN PAKE local _G)
+-- ============================================================
 if not _G.STHAIN then _G.STHAIN = {} end
 if not _G.STHAIN.Modules then _G.STHAIN.Modules = {} end
 
--- [1] CONFIG (NEMPEL DI SINI)
 local Config = {
     ConfigVersion = 2,
     Combat = { AutoAttack = false, AutoRush = false, AutoFollow = false, KillAura = false, TargetLock = false, AutoHeal = false, AntiStun = false, AttackDelay = 0.35, RushDelay = 0.5, FollowDelay = 0.35, KillAuraRange = 20, HealThreshold = 30 },
@@ -15,26 +21,12 @@ local Config = {
 }
 _G.STHAIN.Config = Config
 
-if readfile and isfile then
-    local CONFIG_FOLDER = "FlowHub_Configs"
-    local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
-    if isfile(CONFIG_FILE) then
-        local ok, data = pcall(readfile, CONFIG_FILE)
-        if ok and data and #data > 0 then
-            local Http = game:GetService("HttpService")
-            local ok2, decoded = pcall(function() return Http:JSONDecode(data) end)
-            if ok2 and type(decoded) == "table" then
-                local savedVersion = decoded.ConfigVersion or 1
-                if savedVersion < Config.ConfigVersion then pcall(function() delfile(CONFIG_FILE) end)
-                else for category, values in pairs(decoded) do if Config[category] then for key, val in pairs(values) do Config[category][key] = val end end end end
-            end
-        end
-    end
-end
-
--- [2] FETCH GUI DARI REPO PUBLIC
+-- ============================================================
+-- BAGIAN 2: FETCH GUI (TEST KEMARIN UDAH BERHASIL DI SINI)
+-- ============================================================
 local BASE_GUI = "https://raw.githubusercontent.com/Kira-128/Flow-GUI/main/src/"
 local GuiModules = {"1_services", "3_theme", "4_utils", "5_gui", "6_components", "7_pages"}
+
 for _, mod in ipairs(GuiModules) do
     local ok, src = pcall(game.HttpGet, game, BASE_GUI .. mod .. ".lua")
     if ok and src and #src > 0 then
@@ -44,9 +36,15 @@ for _, mod in ipairs(GuiModules) do
     task.wait(0.1)
 end
 
+-- ============================================================
+-- BAGIAN 3: JEDA BIAR GUI MUNCUL DULUAN (WAJIB)
+-- ============================================================
 task.wait(0.5)
 
--- [3] LOGIC UTAMA
+-- ============================================================
+-- BAGIAN 4: MASUKIN LOGIC LU DI BAWAH INI
+-- (Dari "local S = _G.STHAIN" sampai ujung 9_init)
+-- ============================================================
 local S = _G.STHAIN
 if not S then return end
 local Utils = S.Utils
@@ -556,8 +554,7 @@ end
 function _G.STHAIN.TeleportToBase()
     if tpToNamed("base") then return true end
     if tpToNamed("pointa") then return true end
-    if tpToNamed("pointb") then return true end
-    return false
+    if tpToNamed("pointb") then return true end    return false
 end
 
 function _G.STHAIN.TeleportToPointA() return tpToNamed("pointa") end
