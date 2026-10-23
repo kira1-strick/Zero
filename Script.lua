@@ -1,14 +1,28 @@
 --[[
-  FLOW HUB - COMMAND AN ARMY (FINAL MERGED)
+  FLOW HUB - COMMAND AN ARMY (FINAL PRODUCTION)
 ============================================================
 ]]
 
--- ============================================================
--- BAGIAN 1: SETUP DASAR & CONFIG (JANGAN PAKE local _G)
--- ============================================================
+-- 1. CLEANUP (ANTI DOUBLE GUI & MEMORY LEAK)
+local CoreGui = game:GetService("CoreGui")
+local PlayerGui = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+for _, parent in pairs({CoreGui, PlayerGui}) do
+    local old = parent:FindFirstChild("FlowHub")
+    if old then old:Destroy() end
+end
+
+if _G.FlowHubConnections then
+    for _, conn in pairs(_G.FlowHubConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    _G.FlowHubConnections = nil
+end
+
+-- 2. SETUP GLOBAL
 if not _G.STHAIN then _G.STHAIN = {} end
 if not _G.STHAIN.Modules then _G.STHAIN.Modules = {} end
 
+-- 3. SETUP CONFIG DULU (BIAR GUI GAK ERROR)
 local Config = {
     ConfigVersion = 2,
     Combat = { AutoAttack = false, AutoRush = false, AutoFollow = false, KillAura = false, TargetLock = false, AutoHeal = false, AntiStun = false, AttackDelay = 0.35, RushDelay = 0.5, FollowDelay = 0.35, KillAuraRange = 20, HealThreshold = 30 },
@@ -21,9 +35,7 @@ local Config = {
 }
 _G.STHAIN.Config = Config
 
--- ============================================================
--- BAGIAN 2: FETCH GUI (TEST KEMARIN UDAH BERHASIL DI SINI)
--- ============================================================
+-- 4. FETCH GUI PAKE PCALL (ANTI CRASH)
 local BASE_GUI = "https://raw.githubusercontent.com/Kira-128/Flow-GUI/main/src/"
 local GuiModules = {"1_services", "3_theme", "4_utils", "5_gui", "6_components", "7_pages"}
 
@@ -36,15 +48,37 @@ for _, mod in ipairs(GuiModules) do
     task.wait(0.1)
 end
 
--- ============================================================
--- BAGIAN 3: JEDA BIAR GUI MUNCUL DULUAN (WAJIB)
--- ============================================================
+-- 5. JEDA BENTAR (BIAR GUI RENDER DULUAN)
 task.wait(0.5)
 
--- ============================================================
--- BAGIAN 4: MASUKIN LOGIC LU DI BAWAH INI
--- (Dari "local S = _G.STHAIN" sampai ujung 9_init)
--- ============================================================
+-- 6. LOAD CONFIG DARI FILE
+if readfile and isfile then
+    local CONFIG_FOLDER = "FlowHub_Configs"
+    local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
+    if isfile(CONFIG_FILE) then
+        local ok, data = pcall(readfile, CONFIG_FILE)
+        if ok and data and #data > 0 then
+            local Http = game:GetService("HttpService")
+            local ok2, decoded = pcall(function() return Http:JSONDecode(data) end)
+            if ok2 and type(decoded) == "table" then
+                local savedVersion = decoded.ConfigVersion or 1
+                if savedVersion < Config.ConfigVersion then
+                    pcall(function() delfile(CONFIG_FILE) end)
+                else
+                    for category, values in pairs(decoded) do
+                        if Config[category] then
+                            for key, val in pairs(values) do
+                                Config[category][key] = val
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- 7. LOAD LOGIC (KODE PANJANG LU)
 local S = _G.STHAIN
 if not S then return end
 local Utils = S.Utils
@@ -91,9 +125,15 @@ addConn(Run.RenderStepped:Connect(function()
     local hum = getHum()
     if not hum then return end
     local mv = Config.Movement
-    if mv.EnableRunSpeed then if mv.WalkSpeed and mv.WalkSpeed > 0 and hum.WalkSpeed ~= mv.WalkSpeed then hum.WalkSpeed = mv.WalkSpeed end
-    else if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end end
-    if mv.JumpPower and mv.JumpPower > 0 then hum.UseJumpPower = true if hum.JumpPower ~= mv.JumpPower then hum.JumpPower = mv.JumpPower end end
+    if mv.EnableRunSpeed then
+        if mv.WalkSpeed and mv.WalkSpeed > 0 and hum.WalkSpeed ~= mv.WalkSpeed then hum.WalkSpeed = mv.WalkSpeed end
+    else
+        if hum.WalkSpeed ~= 16 then hum.WalkSpeed = 16 end
+    end
+    if mv.JumpPower and mv.JumpPower > 0 then
+        hum.UseJumpPower = true
+        if hum.JumpPower ~= mv.JumpPower then hum.JumpPower = mv.JumpPower end
+    end
 end))
 
 local noclipOriginal = {}
@@ -107,7 +147,10 @@ addConn(Run.Heartbeat:Connect(function()
     local char = getChar()
     if not char then return end
     for _, part in pairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then if noclipOriginal[part] == nil then noclipOriginal[part] = part.CanCollide end part.CanCollide = false end
+        if part:IsA("BasePart") then
+            if noclipOriginal[part] == nil then noclipOriginal[part] = part.CanCollide end
+            part.CanCollide = false
+        end
     end
     State.Noclip = true
 end))
@@ -128,20 +171,33 @@ local function startFly()
     local hrp, hum = getHRP(), getHum()
     if not (hrp and hum) then return end
     hum.PlatformStand = true
-    flyBV = Instance.new("BodyVelocity") flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge) flyBV.Velocity = Vector3.zero flyBV.Parent = hrp
-    flyBG = Instance.new("BodyGyro") flyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge) flyBG.P = 10000 flyBG.D = 100 flyBG.Parent = hrp
+    flyBV = Instance.new("BodyVelocity")
+    flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    flyBV.Velocity = Vector3.zero
+    flyBV.Parent = hrp
+    flyBG = Instance.new("BodyGyro")
+    flyBG.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    flyBG.P = 10000
+    flyBG.D = 100
+    flyBG.Parent = hrp
     flyConn = Run.RenderStepped:Connect(function()
         if not Config.Movement.Fly then return end
         local h, hm = getHRP(), getHum()
         if not (h and hm and flyBV and flyBG) then return end
         flyBG.CFrame = Cam.CFrame
-        local d = hm.MoveDirection local f = Vector3.zero
+        local d = hm.MoveDirection
+        local f = Vector3.zero
         if d.Magnitude > 0.1 then f = Cam.CFrame.LookVector * d.Z + Cam.CFrame.RightVector * d.X end
         flyBV.Velocity = f * Config.Movement.FlySpeed
     end)
 end
 
-task.spawn(function() while task.wait(0.5) do if Config.Movement.Fly and not State.Fly then startFly() State.Fly = true elseif not Config.Movement.Fly and State.Fly then stopFly() State.Fly = false end end end)
+task.spawn(function()
+    while task.wait(0.5) do
+        if Config.Movement.Fly and not State.Fly then startFly() State.Fly = true
+        elseif not Config.Movement.Fly and State.Fly then stopFly() State.Fly = false end
+    end
+end)
 
 task.spawn(function()
     while task.wait(0.1) do
@@ -170,9 +226,18 @@ task.spawn(function()
         local anyActive = Config.Combat.AutoAttack or Config.Combat.AutoRush or Config.Combat.AutoFollow
         if not anyActive then continue end
         local now = tick()
-        if Config.Combat.AutoAttack and now - atkTimer >= Config.Combat.AttackDelay then atkTimer = now if TroopStateRequest then pcall(function() TroopStateRequest:FireServer("Attack") end) end end
-        if Config.Combat.AutoRush and now - rushTimer >= Config.Combat.RushDelay then rushTimer = now if RushRequest then pcall(function() RushRequest:FireServer() end) end end
-        if Config.Combat.AutoFollow and now - followTimer >= Config.Combat.FollowDelay then followTimer = now if TroopStateRequest then pcall(function() TroopStateRequest:FireServer("Follow") end) end end
+        if Config.Combat.AutoAttack and now - atkTimer >= Config.Combat.AttackDelay then
+            atkTimer = now
+            if TroopStateRequest then pcall(function() TroopStateRequest:FireServer("Attack") end) end
+        end
+        if Config.Combat.AutoRush and now - rushTimer >= Config.Combat.RushDelay then
+            rushTimer = now
+            if RushRequest then pcall(function() RushRequest:FireServer() end) end
+        end
+        if Config.Combat.AutoFollow and now - followTimer >= Config.Combat.FollowDelay then
+            followTimer = now
+            if TroopStateRequest then pcall(function() TroopStateRequest:FireServer("Follow") end) end
+        end
     end
 end)
 
@@ -192,7 +257,10 @@ task.spawn(function()
                     local dist = (thrp.Position - hrp.Position).Magnitude
                     if dist > 5 and dist < nearestDist then nearest = thrp nearestDist = dist end
                 end
-                if nearest and tick() - killAuraCD >= 0.5 then killAuraCD = tick() if TroopStateRequest then pcall(function() TroopStateRequest:FireServer("Attack") end) end end
+                if nearest and tick() - killAuraCD >= 0.5 then
+                    killAuraCD = tick()
+                    if TroopStateRequest then pcall(function() TroopStateRequest:FireServer("Attack") end) end
+                end
             end
         end
     end
@@ -205,7 +273,10 @@ task.spawn(function()
             local hum = getHum()
             if hum and hum.Health > 0 then
                 local pct = (hum.Health / hum.MaxHealth) * 100
-                if pct <= Config.Combat.HealThreshold and tick() - healCD >= 2.5 then healCD = tick() sendKey(Enum.KeyCode.H, 0.05) end
+                if pct <= Config.Combat.HealThreshold and tick() - healCD >= 2.5 then
+                    healCD = tick()
+                    sendKey(Enum.KeyCode.H, 0.05)
+                end
             end
         end
     end
@@ -239,7 +310,10 @@ end
 local function aimPredict(part) local v = part.AssemblyLinearVelocity or Vector3.new() return part.Position + (v * 0.18) end
 
 addConn(Run.RenderStepped:Connect(function(dt)
-    if not Config.Combat.TargetLock then if State.TargetLock then aimLock = nil aimSmoothCF = nil State.TargetLock = false end return end
+    if not Config.Combat.TargetLock then
+        if State.TargetLock then aimLock = nil aimSmoothCF = nil State.TargetLock = false end
+        return
+    end
     if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
     if not aimSmoothCF then aimSmoothCF = Cam.CFrame end
     if aimLock then if not aimValid(aimLock) then aimLock = nil aimLostAt = tick() end end
@@ -270,7 +344,9 @@ local function isTeammate(model)
 end
 
 local function cleanupESP()
-    for _, objs in pairs(espCache) do for _, obj in pairs(objs) do if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end end end
+    for _, objs in pairs(espCache) do
+        for _, obj in pairs(objs) do if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end end
+    end
     espCache = {}
 end
 
@@ -289,12 +365,30 @@ task.spawn(function()
             local markerColor = isTeam and COLOR_TEAM or COLOR_ENEMY
             if not espCache[model] then
                 espCache[model] = { isTeam = isTeam }
-                local hl = Instance.new("Highlight") hl.FillColor = markerColor hl.OutlineColor = Color3.new(1,1,1) hl.FillTransparency = 0.5 hl.Adornee = model hl.Parent = espGuiParent
+                local hl = Instance.new("Highlight")
+                hl.FillColor = markerColor
+                hl.OutlineColor = Color3.new(1,1,1)
+                hl.FillTransparency = 0.5
+                hl.Adornee = model
+                hl.Parent = espGuiParent
                 espCache[model].hl = hl
             end
             if anySetting and not espCache[model].infoBB then
-                local bb = Instance.new("BillboardGui") bb.Size = UDim2.new(0, 200, 0, 24) bb.StudsOffset = Vector3.new(0, 3.5, 0) bb.AlwaysOnTop = true bb.Adornee = hrp bb.Parent = espGuiParent
-                local lbl = Instance.new("TextLabel") lbl.Size = UDim2.new(1, 0, 1, 0) lbl.TextColor3 = markerColor lbl.TextStrokeTransparency = 0 lbl.TextStrokeColor3 = Color3.new(0,0,0) lbl.TextSize = 13 lbl.Font = Enum.Font.GothamBold lbl.BackgroundTransparency = 1 lbl.Parent = bb
+                local bb = Instance.new("BillboardGui")
+                bb.Size = UDim2.new(0, 200, 0, 24)
+                bb.StudsOffset = Vector3.new(0, 3.5, 0)
+                bb.AlwaysOnTop = true
+                bb.Adornee = hrp
+                bb.Parent = espGuiParent
+                local lbl = Instance.new("TextLabel")
+                lbl.Size = UDim2.new(1, 0, 1, 0)
+                lbl.TextColor3 = markerColor
+                lbl.TextStrokeTransparency = 0
+                lbl.TextStrokeColor3 = Color3.new(0,0,0)
+                lbl.TextSize = 13
+                lbl.Font = Enum.Font.GothamBold
+                lbl.BackgroundTransparency = 1
+                lbl.Parent = bb
                 espCache[model].infoBB = bb
                 espCache[model].infoLbl = lbl
             end
@@ -307,7 +401,12 @@ task.spawn(function()
                 espCache[model].infoLbl.TextColor3 = markerColor
             end
         end
-        for model, objs in pairs(espCache) do if not model.Parent then for _, obj in pairs(objs) do if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end end espCache[model] = nil end end
+        for model, objs in pairs(espCache) do
+            if not model.Parent then
+                for _, obj in pairs(objs) do if obj and typeof(obj) == "Instance" then pcall(function() obj:Destroy() end) end end
+                espCache[model] = nil
+            end
+        end
     end
 end)
 
@@ -318,19 +417,29 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function() while task.wait(120) do if Config.Misc.AntiAFK then pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end) end end end)
+task.spawn(function()
+    while task.wait(120) do
+        if Config.Misc.AntiAFK then pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end) end
+    end
+end)
 
 function _G.STHAIN.SpawnUnit(slot)
     local PG = game.Players.LocalPlayer:FindFirstChild("PlayerGui")
     if not PG then return false end
     local spawnBtn = nil
-    for _, v in pairs(PG:GetDescendants()) do if (v:IsA("ImageButton") or v:IsA("TextButton")) and v.Name == "Spawn" and v.Visible then spawnBtn = v break end end
+    for _, v in pairs(PG:GetDescendants()) do
+        if (v:IsA("ImageButton") or v:IsA("TextButton")) and v.Name == "Spawn" and v.Visible then spawnBtn = v break end
+    end
     if spawnBtn then pcall(function() if firesignal then firesignal(spawnBtn.MouseButton1Click) else spawnBtn:Activate() end end) return true end
     if RespawnUnitRequest then pcall(function() RespawnUnitRequest:FireServer(tonumber(slot) or 1) end) return true end
     return false
 end
 
-task.spawn(function() while task.wait(3) do if Config.Spawn.AutoSpawn then if _G.STHAIN.SpawnUnit then _G.STHAIN.SpawnUnit(Config.Spawn.UnitSlot or 1) end end end end)
+task.spawn(function()
+    while task.wait(3) do
+        if Config.Spawn.AutoSpawn then if _G.STHAIN.SpawnUnit then _G.STHAIN.SpawnUnit(Config.Spawn.UnitSlot or 1) end end
+    end
+end)
 
 local teamAttempts = 0
 task.spawn(function()
@@ -338,8 +447,7 @@ task.spawn(function()
         local team = Config.Misc.AutoJoinTeam
         if team and team ~= "none" then
             local targetName = (team == "defender") and "Defenders" or "Attackers"
-            if LP.Team and LP.Team.Name == targetName then Config.Misc.AutoJoinTeam = "none"
-            else
+            if LP.Team and LP.Team.Name == targetName then Config.Misc.AutoJoinTeam = "none" else
                 local TeamRequest = Remotes and Remotes:FindFirstChild("TeamRequest")
                 if TeamRequest then pcall(function() TeamRequest:FireServer(targetName) end) end
                 teamAttempts = teamAttempts + 1
@@ -434,7 +542,8 @@ function _G.STHAIN.TeleportScan()
     if suppliesFolder then
         for _, obj in pairs(suppliesFolder:GetChildren()) do
             if obj:IsA("Model") then
-                local n = string.lower(obj.Name) local teamType = "unknown"
+                local n = string.lower(obj.Name)
+                local teamType = "unknown"
                 if n:find("attacker") then teamType = "attacker" elseif n:find("defender") then teamType = "defender" end
                 table.insert(results.supplies, {name = obj.Name, instance = obj, capturePart = obj:FindFirstChild("CapturePoint"), team = teamType})
             end
@@ -460,8 +569,15 @@ local function godmodeOn()
     local original = { MaxHealth = hum.MaxHealth, Health = hum.Health }
     local GOD_HP = 1000000
     pcall(function() hum.MaxHealth = GOD_HP hum.Health = GOD_HP end)
-    local lockConn = Run.Stepped:Connect(function() if hum and hum.Parent then pcall(function() if hum.MaxHealth < GOD_HP then hum.MaxHealth = GOD_HP end if hum.Health < GOD_HP then hum.Health = GOD_HP end end) end end)
-    return { restore = function() if lockConn then lockConn:Disconnect() end if hum and hum.Parent then pcall(function() hum.MaxHealth = original.MaxHealth hum.Health = original.MaxHealth end) end end }
+    local lockConn = Run.Stepped:Connect(function()
+        if hum and hum.Parent then pcall(function() if hum.MaxHealth < GOD_HP then hum.MaxHealth = GOD_HP end if hum.Health < GOD_HP then hum.Health = GOD_HP end end) end
+    end)
+    return {
+        restore = function()
+            if lockConn then lockConn:Disconnect() end
+            if hum and hum.Parent then pcall(function() hum.MaxHealth = original.MaxHealth hum.Health = original.MaxHealth end) end
+        end
+    }
 end
 
 function _G.STHAIN.TeleportTo(part)
@@ -554,7 +670,8 @@ end
 function _G.STHAIN.TeleportToBase()
     if tpToNamed("base") then return true end
     if tpToNamed("pointa") then return true end
-    if tpToNamed("pointb") then return true end    return false
+    if tpToNamed("pointb") then return true end
+    return false
 end
 
 function _G.STHAIN.TeleportToPointA() return tpToNamed("pointa") end
@@ -602,6 +719,7 @@ end
 
 local isDirty = false
 local saveThread = nil
+
 function _G.STHAIN.MarkDirty()
     if not _G.STHAIN.Config.Config.AutoSave then return end 
     isDirty = true
